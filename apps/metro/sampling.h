@@ -116,19 +116,21 @@ private:
     double          RMS_dist;
     double          volume;
     double          area_S1;
+    double          normal_consistency = 0;
 
     // globals
     int             n_samples;
+    int             n_normal_samples = 0;
 
     // private methods
     inline double   ComputeMeshArea(MetroMesh & mesh);
-    float           AddSample(const Point3x &p);
+    float           AddSample(const Point3x &p, const Point3x& normal);
     inline void     AddRandomSample(FaceIterator &T);
     inline void     SampleEdge(const Point3x & v0, const Point3x & v1, int n_samples_per_edge);
     void            VertexSampling();
     void            EdgeSampling();
-    void            FaceSubdiv(const Point3x & v0, const Point3x &v1, const Point3x & v2, int maxdepth);
-    void            SimilarTriangles(const Point3x &v0, const Point3x &v1, const Point3x &v2, int n_samples_per_edge);
+    void            FaceSubdiv(const Point3x & v0, const Point3x &v1, const Point3x & v2, int maxdepth, const Point3x& faceNormal);
+    void            SimilarTriangles(const Point3x &v0, const Point3x &v1, const Point3x &v2, int n_samples_per_edge, const Point3x& faceNormal);
     void            MontecarloFaceSampling();
     void            SubdivFaceSampling();
     void            SimilarFaceSampling();
@@ -155,6 +157,8 @@ public :
     void            SetParam(double _n_samp)    {n_samples_target = _n_samp;}
     void            SetSamplesTarget(unsigned long _n_samp);
     void            SetSamplesPerAreaUnit(double _n_samp);
+    unsigned long   GetNormalSamples() const    { return n_normal_samples; }
+    double          GetNormalConsistency() const  { return normal_consistency / n_normal_samples; }
 };
 
 // -----------------------------------------------------------------------------------------------
@@ -221,8 +225,21 @@ inline double Sampling<MetroMesh>::ComputeMeshArea(MetroMesh & mesh)
 	return area/2.0;
 }
 
+template <class FaceIt>
+auto FaceNormal(FaceIt f)
+{
+    auto p0 = (f->V(0)->cP());
+    auto p1 = (f->V(1)->cP());
+    auto p2 = (f->V(2)->cP());
+    auto v1 = (p1 - p0);
+    auto v2 = (p2 - p0);
+    auto face_normal = v1 ^ v2;
+    face_normal.Normalize();
+    return face_normal;
+}
+
 template <class MetroMesh>
-float Sampling<MetroMesh>::AddSample(const Point3x &p )
+float Sampling<MetroMesh>::AddSample(const Point3x &p, const Point3x& normal)
 {
     FaceType   *f=0;
     Point3x             normf, bestq, ip;
@@ -243,6 +260,14 @@ float Sampling<MetroMesh>::AddSample(const Point3x &p )
     // update distance measures
     if(dist == dist_upper_bound)
         return -1.0;
+
+    if(normal.SquaredNorm() != 0)
+    {
+        auto face_normal = FaceNormal(f);
+        ++n_normal_samples;
+        auto dot = face_normal.dot(normal);
+        normal_consistency += std::abs(dot);
+    }
 
     if(dist > max_dist)
         max_dist = dist;        // L_inf
@@ -274,7 +299,7 @@ void Sampling<MetroMesh>::VertexSampling()
             if(  (*vi).IsUserBit(referredBit) || // it is referred
                     ((Flags&SamplingFlags::INCLUDE_UNREFERENCED_VERTICES) != 0) ) //include also unreferred
     {
-        error = AddSample((*vi).cP());
+        error = AddSample((*vi).cP(), Point3x::Zero());
 
         n_total_vertex_samples++;
 
@@ -301,7 +326,7 @@ inline void Sampling<MetroMesh>::SampleEdge(const Point3x & v0, const Point3x & 
 
     for(i=1; i <= n_samples_per_edge; i++)
     {
-        AddSample(v0 + e*i);
+        AddSample(v0 + e*i, Point3x::Zero());
         n_total_edge_samples++;
     }
 }
@@ -381,7 +406,7 @@ inline void Sampling<MetroMesh>::AddRandomSample(FaceIterator &T)
     }
 
     // add a random point on the face T.
-    AddSample (p0 + (v1 * rnd_1 + v2 * rnd_2));
+    AddSample (p0 + (v1 * rnd_1 + v2 * rnd_2), FaceNormal(T));
     n_total_area_samples++;
 }
 
@@ -417,13 +442,13 @@ void Sampling<MetroMesh>::MontecarloFaceSampling()
 
 // Subdivision sampling.
 template <class MetroMesh>
-void Sampling<MetroMesh>::FaceSubdiv(const Point3x & v0, const Point3x & v1, const Point3x & v2, int maxdepth)
+void Sampling<MetroMesh>::FaceSubdiv(const Point3x & v0, const Point3x & v1, const Point3x & v2, int maxdepth, const Point3x& faceNormal)
 {
     // recursive face subdivision.
     if(maxdepth == 0)
     {
         // ground case.
-        AddSample((v0+v1+v2)/3.0f);
+        AddSample((v0+v1+v2)/3.0f, faceNormal);
         n_total_area_samples++;
         n_samples++;
         return;
@@ -446,16 +471,16 @@ void Sampling<MetroMesh>::FaceSubdiv(const Point3x & v0, const Point3x & v1, con
     switch(res)
     {
      case 0 :    pp = (v0+v1)/2;
-                 FaceSubdiv(v0,pp,v2,maxdepth-1);
-                 FaceSubdiv(pp,v1,v2,maxdepth-1);
+                 FaceSubdiv(v0,pp,v2,maxdepth-1, faceNormal);
+                 FaceSubdiv(pp,v1,v2,maxdepth-1, faceNormal);
                  break;
      case 1 :    pp = (v1+v2)/2;
-                 FaceSubdiv(v0,v1,pp,maxdepth-1);
-                 FaceSubdiv(v0,pp,v2,maxdepth-1);
+                 FaceSubdiv(v0,v1,pp,maxdepth-1, faceNormal);
+                 FaceSubdiv(v0,pp,v2,maxdepth-1, faceNormal);
                  break;
      case 2 :    pp = (v2+v0)/2;
-                 FaceSubdiv(v0,v1,pp,maxdepth-1);
-                 FaceSubdiv(pp,v1,v2,maxdepth-1);
+                 FaceSubdiv(v0,v1,pp,maxdepth-1, faceNormal);
+                 FaceSubdiv(pp,v1,v2,maxdepth-1, faceNormal);
                  break;
     }
 }
@@ -479,7 +504,7 @@ void Sampling<MetroMesh>::SubdivFaceSampling()
             // face sampling.
             maxdepth = ((int)(log((double)n_samples)/log(2.0)));
             n_samples = 0;
-            FaceSubdiv((*fi).V(0)->cP(), (*fi).V(1)->cP(), (*fi).V(2)->cP(), maxdepth);
+            FaceSubdiv((*fi).V(0)->cP(), (*fi).V(1)->cP(), (*fi).V(2)->cP(), maxdepth, FaceNormal(fi));
         }
         n_samples_decimal -= (double) n_samples;
 
@@ -493,7 +518,7 @@ void Sampling<MetroMesh>::SubdivFaceSampling()
 
 // Similar Triangles sampling.
 template <class MetroMesh>
-void Sampling<MetroMesh>::SimilarTriangles(const Point3x & v0, const Point3x & v1, const Point3x & v2, int n_samples_per_edge)
+void Sampling<MetroMesh>::SimilarTriangles(const Point3x & v0, const Point3x & v1, const Point3x & v2, int n_samples_per_edge, const Point3x& faceNormal)
 {
     Point3x     V1((v1-v0)/(double)(n_samples_per_edge-1));
     Point3x     V2((v2-v0)/(double)(n_samples_per_edge-1));
@@ -503,7 +528,7 @@ void Sampling<MetroMesh>::SimilarTriangles(const Point3x & v0, const Point3x & v
     for(i=1; i < n_samples_per_edge-1; i++)
         for(j=1; j < n_samples_per_edge-1-i; j++)
         {
-            AddSample( v0 + (V1*(double)i + V2*(double)j) );
+            AddSample( v0 + (V1*(double)i + V2*(double)j), faceNormal);
             n_total_area_samples++;
             n_samples++;
         }
@@ -528,7 +553,7 @@ void Sampling<MetroMesh>::SimilarFaceSampling()
             // face sampling.
             n_samples_per_edge = (int)((sqrt(1.0+8.0*(double)n_samples) +5.0)/2.0);
             n_samples = 0;
-            SimilarTriangles((*fi).V(0)->cP(), (*fi).V(1)->cP(), (*fi).V(2)->cP(), n_samples_per_edge);
+            SimilarTriangles((*fi).V(0)->cP(), (*fi).V(1)->cP(), (*fi).V(2)->cP(), n_samples_per_edge, FaceNormal(fi));
         }
         n_samples_decimal -= (double) n_samples;
 

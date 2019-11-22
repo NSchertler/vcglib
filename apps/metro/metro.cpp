@@ -218,7 +218,7 @@ int main(int argc, char**argv)
     printf("-------------------------------\n"
            "         Metro V.4.07 \n"
            "     http://vcg.isti.cnr.it\n"
-           "   release date: "__DATE__"\n"
+           "   release date: " __DATE__ "\n"
            "-------------------------------\n\n");
 
     if(argc <= 2)    Usage();
@@ -330,11 +330,13 @@ int main(int argc, char**argv)
     printf("\ndistances:\n  max  : %f (%f  wrt bounding box diagonal)\n", (float)dist1_max, (float)dist1_max/bbox.Diag());
     printf("  mean : %f\n", ForwardSampling.GetDistMean());
     printf("  RMS  : %f\n", ForwardSampling.GetDistRMS());
+    printf("normal consistency: %f\n", ForwardSampling.GetNormalConsistency());
     printf("# vertex samples %9lu\n", ForwardSampling.GetNVertexSamples());
     printf("# edge samples   %9lu\n", ForwardSampling.GetNEdgeSamples());
     printf("# area samples   %9lu\n", ForwardSampling.GetNAreaSamples());
     printf("# total samples  %9lu\n", ForwardSampling.GetNSamples());
-    printf("# samples per area unit: %f\n\n", ForwardSampling.GetNSamplesPerAreaUnit());
+    printf("# samples per area unit: %f\n", ForwardSampling.GetNSamplesPerAreaUnit());
+    printf("# normal samples:%9lu\n\n", ForwardSampling.GetNormalSamples());
 
     // Backward distance.
     printf("\nBackward distance (M2 -> M1):\n");
@@ -355,11 +357,13 @@ int main(int argc, char**argv)
     printf("\ndistances:\n  max  : %f (%f  wrt bounding box diagonal)\n", (float)dist2_max, (float)dist2_max/bbox.Diag());
     printf("  mean : %f\n", BackwardSampling.GetDistMean());
     printf("  RMS  : %f\n", BackwardSampling.GetDistRMS());
+    printf("normal consistency: %f\n", BackwardSampling.GetNormalConsistency());
     printf("# vertex samples %9lu\n", BackwardSampling.GetNVertexSamples());
     printf("# edge samples   %9lu\n", BackwardSampling.GetNEdgeSamples());
     printf("# area samples   %9lu\n", BackwardSampling.GetNAreaSamples());
     printf("# total samples  %9lu\n", BackwardSampling.GetNSamples());
-    printf("# samples per area unit: %f\n\n", BackwardSampling.GetNSamplesPerAreaUnit());
+    printf("# samples per area unit: %f\n", BackwardSampling.GetNSamplesPerAreaUnit());
+    printf("# normal samples:%9lu\n\n", BackwardSampling.GetNormalSamples());
 
     // compute time info.
     elapsed_time = clock() - t0;
